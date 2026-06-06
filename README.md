@@ -2,40 +2,31 @@
 
 ## Introduction
 
-This repository demonstrates advanced GitOps concepts using:
+This repository demonstrates Helm-based GitOps workflows using ArgoCD.
+
+The lab progresses from deploying a single Helm chart to managing multiple environments using ApplicationSets and Git Directory Generators.
+
+Topics covered:
 
 * Helm Charts
-* ArgoCD
+* ArgoCD Applications
+* Auto Sync
+* Self Heal
+* Prune
 * Multi-Environment Deployments
 * ApplicationSets
-* Git Directory Generators
-
-This repository is a continuation of the foundational GitOps concepts covered in the `gitops-lab` repository.
-
-While the previous repository focused on plain Kubernetes manifests, this repository introduces Helm-based application deployments and scalable GitOps patterns used in real-world Kubernetes environments.
-
----
-
-# Learning Objectives
-
-By completing this lab, you will learn:
-
-* Helm Chart fundamentals
-* Helm deployments through ArgoCD
-* Environment-specific configuration using values files
-* Multi-environment GitOps workflows
-* ApplicationSet fundamentals
 * List Generators
 * Git Directory Generators
+* Go Templates
 * Automatic Application Discovery
-* ArgoCD Go Templates
-* Scalable GitOps repository structures
+
+This repository is a continuation of the foundational GitOps concepts introduced in the earlier `gitops-lab` repository.
 
 ---
 
 # Architecture Overview
 
-Traditional ArgoCD Application:
+## Traditional ArgoCD Application
 
 ```text
 Git Repository
@@ -47,7 +38,7 @@ Helm Chart
 Kubernetes
 ```
 
-ApplicationSet Architecture:
+## ApplicationSet Architecture
 
 ```text
 Git Repository
@@ -61,11 +52,17 @@ Helm Charts
 Kubernetes
 ```
 
-ApplicationSets do not deploy workloads directly.
+Important:
 
-ApplicationSets create Applications.
+```text
+ApplicationSet
+      ↓
+Creates Applications
 
-Applications deploy workloads.
+Application
+      ↓
+Deploys Workloads
+```
 
 ---
 
@@ -98,7 +95,7 @@ helm-gitops-lab/
 
 # Prerequisites
 
-Before starting this lab:
+Before starting:
 
 * Kubernetes Cluster
 * ArgoCD Installed
@@ -106,44 +103,48 @@ Before starting this lab:
 * kubectl Configured
 * GitHub Account
 
-Recommended cluster:
+Recommended Lab Cluster:
 
 ```text
-1 Control Plane
-2 Worker Nodes
+Control Plane: 1
+Worker Nodes: 2
 ```
 
 ---
 
-# Creating Helm Chart
+# Step 1 - Create Helm Chart
 
-Create chart:
+Generate chart:
 
 ```bash
 helm create nginx-helm
 ```
 
-Generated structure:
-
-```text
-nginx-helm/
-├── Chart.yaml
-├── values.yaml
-├── templates/
-└── charts/
-```
-
-Verify rendering:
+Verify structure:
 
 ```bash
+tree nginx-helm
+```
+
+Render templates:
+
+```bash
+cd nginx-helm
+
 helm template nginx-helm .
 ```
 
-This command generates Kubernetes manifests from the Helm chart.
+Expected:
+
+```text
+Kubernetes YAML manifests rendered successfully
+```
+
+This confirms the chart is valid.
 
 ---
 
-# Deploying Helm Chart Through ArgoCD
+# Step 2 - Deploy Helm Chart Through ArgoCD
 
 Create namespace:
 
@@ -151,12 +152,7 @@ Create namespace:
 kubectl create namespace helm-demo
 ```
 
-Create ArgoCD Application:
-
-```text
-Application Name:
-nginx-helm
-```
+Create ArgoCD Application.
 
 Source:
 
@@ -183,82 +179,90 @@ Self Heal
 Prune
 ```
 
-Verify:
+Verify deployment:
 
 ```bash
 kubectl get all -n helm-demo
 ```
 
+Expected:
+
+```text
+Deployment
+ReplicaSet
+Pods
+Service
+```
+
 ---
 
-# Understanding values.yaml
+# Step 3 - Understanding values.yaml
 
-The file:
+Default:
 
 ```yaml
 replicaCount: 2
 ```
 
-controls:
+Verify:
 
-```text
-Deployment Replica Count
+```bash
+kubectl get deploy -n helm-demo
 ```
 
-Changing:
+Expected:
+
+```text
+READY   2/2
+```
+
+Change:
 
 ```yaml
 replicaCount: 5
 ```
 
-and pushing to Git automatically updates the deployment through ArgoCD.
+Commit and push.
 
-No kubectl apply or helm upgrade commands are required.
+Wait for ArgoCD reconciliation.
 
----
+Verify:
 
-# Multi-Environment Deployments
+```bash
+kubectl get deploy -n helm-demo
+```
 
-Real-world deployments usually require:
+Expected:
 
 ```text
-Development
-QA
-Production
-Performance Testing
+READY   5/5
 ```
 
-Instead of creating multiple charts, one chart is reused with multiple values files.
-
-Example:
-
-Development:
-
-```yaml
-replicaCount: 1
-```
-
-QA:
-
-```yaml
-replicaCount: 2
-```
-
-Production:
-
-```yaml
-replicaCount: 5
-```
-
-Performance:
-
-```yaml
-replicaCount: 3
-```
+This demonstrates GitOps-driven deployment updates.
 
 ---
 
-# Environment Directory Structure
+# Step 4 - Multi Environment Deployments
+
+Real environments:
+
+```text
+dev
+qa
+prod
+perf
+```
+
+Example replica counts:
+
+| Environment | Replicas |
+| ----------- | -------- |
+| dev         | 1        |
+| qa          | 2        |
+| prod        | 5        |
+| perf        | 3        |
+
+Environment configuration:
 
 ```text
 environment/
@@ -276,165 +280,380 @@ environment/
     └── values.yaml
 ```
 
-Each directory represents one environment.
+Example:
+
+```yaml
+replicaCount: 1
+```
+
+inside:
+
+```text
+environment/dev/values.yaml
+```
 
 ---
 
-# ApplicationSet Fundamentals
+# Step 5 - ApplicationSet Using List Generator
 
-ApplicationSets automate Application creation.
+Create namespaces:
 
-Without ApplicationSets:
+```bash
+kubectl create namespace dev
+kubectl create namespace qa
+kubectl create namespace prod
+kubectl create namespace perf
+```
+
+Create:
+
+```bash
+nano nginx-appset-list.yaml
+```
+
+Paste the List Generator YAML.
+
+Apply:
+
+```bash
+kubectl apply -f nginx-appset-list.yaml
+```
+
+Verify:
+
+```bash
+kubectl get applicationsets -n argocd
+```
+
+Expected:
 
 ```text
-Create Application:
+nginx-appset
+```
+
+Verify Applications:
+
+```bash
+kubectl get applications -n argocd
+```
+
+Expected:
+
+```text
 nginx-dev
-
-Create Application:
 nginx-qa
-
-Create Application:
 nginx-prod
-
-Create Application:
 nginx-perf
 ```
 
-With ApplicationSets:
+Verify deployments:
 
-```text
-ApplicationSet
-      ↓
-Creates
-      ↓
-nginx-dev
-nginx-qa
-nginx-prod
-nginx-perf
+```bash
+kubectl get deploy -A
 ```
 
-Automatically.
+Applications should deploy into their respective namespaces.
 
 ---
 
-# List Generator
+# List Generator YAML
 
-The first ApplicationSet implementation used a List Generator.
+```
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: nginx-appset
+  namespace: argocd
+
+spec:
+  generators:
+  - list:
+      elements:
+      - env: dev
+        namespace: dev
+        valuesFile: values-dev.yaml
+
+      - env: qa
+        namespace: qa
+        valuesFile: values-qa.yaml
+
+      - env: prod
+        namespace: prod
+        valuesFile: values-prod.yaml
+
+      - env: perf
+        namespace: perf
+        valuesFile: values-perf.yaml
+
+  template:
+    metadata:
+      name: 'nginx-{{env}}'
+
+    spec:
+      project: default
+
+      source:
+        repoURL: https://github.com/shubham-singhS2/helm-gitops-lab.git
+        targetRevision: HEAD
+        path: nginx-helm
+
+        helm:
+          valueFiles:
+            - '{{valuesFile}}'
+
+      destination:
+        server: https://kubernetes.default.svc
+        namespace: '{{namespace}}'
+
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+```
+
+---
+
+# Limitation of List Generator
+
+Adding:
+
+```text
+staging
+```
+
+requires:
+
+1. Creating values file
+2. Creating namespace
+3. Editing ApplicationSet YAML
+4. Reapplying ApplicationSet
+
+Not scalable.
+
+---
+
+# Step 6 - Git Directory Generator
+
+Delete previous ApplicationSet:
+
+```bash
+kubectl delete applicationset nginx-appset -n argocd
+```
+
+Create:
+
+```bash
+nano nginx-appset-git.yaml
+```
+
+Paste Git Directory Generator YAML.
+
+Apply:
+
+```bash
+kubectl apply -f nginx-appset-git.yaml
+```
+
+Verify:
+
+```bash
+kubectl get applicationsets -n argocd
+```
+
+Expected:
+
+```text
+nginx-appset
+```
+
+Verify:
+
+```bash
+kubectl get applications -n argocd
+```
+
+Expected:
+
+```text
+nginx-dev
+nginx-qa
+nginx-prod
+nginx-perf
+```
+
+---
+
+# Git Directory Generator YAML
+
+```
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: nginx-appset
+  namespace: argocd
+
+spec:
+  goTemplate: true
+
+  generators:
+  - git:
+      repoURL: https://github.com/shubham-singhS2/helm-gitops-lab.git
+      revision: HEAD
+
+      directories:
+      - path: environment/*
+
+  template:
+    metadata:
+      name: 'nginx-{{ .path.basename }}'
+
+    spec:
+      project: default
+
+      source:
+        repoURL: https://github.com/shubham-singhS2/helm-gitops-lab.git
+        targetRevision: HEAD
+        path: nginx-helm
+
+        helm:
+          valueFiles:
+            - '../{{ .path.path }}/values.yaml'
+
+      destination:
+        server: https://kubernetes.default.svc
+        namespace: '{{ .path.basename }}'
+
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+```
+
+---
+
+# Step 7 - Verify Go Templates
+
+Inspect generated Application:
+
+```bash
+kubectl get application nginx-dev -n argocd -o yaml
+```
+
+Verify:
+
+```yaml
+namespace: dev
+```
+
+and:
+
+```yaml
+valueFiles:
+- ../environment/dev/values.yaml
+```
+
+This confirms template rendering is working.
+
+---
+
+# Step 8 - Automatic Application Discovery
+
+Create new environment:
+
+```bash
+mkdir -p environment/staging
+```
+
+Create:
+
+```bash
+nano environment/staging/values.yaml
+```
 
 Example:
 
 ```yaml
-elements:
-  - env: dev
-  - env: qa
-  - env: prod
+replicaCount: 4
 ```
 
-Each entry generated a separate Application.
+Commit and push.
 
-This approach is simple but requires manual updates whenever a new environment is added.
+Create namespace:
 
----
-
-# Git Directory Generator
-
-To improve scalability, the List Generator was replaced with a Git Directory Generator.
-
-Example:
-
-```yaml
-directories:
-  - path: environment/*
+```bash
+kubectl create namespace staging
 ```
 
-ArgoCD scans Git and discovers:
+Wait for reconciliation.
+
+Verify:
+
+```bash
+kubectl get applications -n argocd
+```
+
+Expected:
 
 ```text
-environment/dev
-environment/qa
-environment/prod
-environment/perf
+nginx-staging
 ```
 
-Applications are generated automatically.
+without modifying the ApplicationSet.
 
 ---
 
-# Go Templates
+# Common Issues Encountered
 
-ArgoCD 3.x uses Go Templates.
+## Issue 1 - ArgoCD 3.x Go Templates
 
-Enable:
+Incorrect:
+
+```yaml
+{{path.basename}}
+```
+
+Correct:
+
+```yaml
+{{ .path.basename }}
+```
+
+Incorrect:
+
+```yaml
+{{path.path}}
+```
+
+Correct:
+
+```yaml
+{{ .path.path }}
+```
+
+Required:
 
 ```yaml
 goTemplate: true
 ```
 
-Example:
-
-```yaml
-name: nginx-{{ .path.basename }}
-```
-
-and
-
-```yaml
-namespace: {{ .path.basename }}
-```
-
-Directory:
+Without this configuration, generated Applications may fail with:
 
 ```text
-environment/prod
+{{path.path}}/values.yaml
+no such file or directory
 ```
-
-Generates:
-
-```text
-Application:
-nginx-prod
-
-Namespace:
-prod
-```
-
----
-
-# Automatic Application Discovery
-
-Adding a new environment requires only:
-
-```text
-Create Directory
-Commit
-Push
-```
-
-Example:
-
-```text
-environment/perf/
-```
-
-ApplicationSet automatically creates:
-
-```text
-nginx-perf
-```
-
-No ApplicationSet modification is required.
 
 ---
 
 # GitOps Workflow
 
-Developer:
-
 ```text
+Developer
+    ↓
 Edit values.yaml
-      ↓
+    ↓
 Commit
-      ↓
+    ↓
 Push
 ```
 
@@ -448,64 +667,23 @@ Sync
 Deploy
 ```
 
-No manual Kubernetes commands are necessary.
+No manual deployment commands required.
 
 ---
 
 # Key Concepts Learned
 
-## Helm
-
-Package manager for Kubernetes applications.
-
-## values.yaml
-
-Environment-specific configuration.
-
-## Application
-
-Deploys workloads.
-
-## ApplicationSet
-
-Creates Applications.
-
-## List Generator
-
-Manually defined Application generation.
-
-## Git Directory Generator
-
-Git-driven Application generation.
-
-## Go Templates
-
-Dynamic Application creation based on Git paths.
-
-## Auto Sync
-
-Automatically applies Git changes.
-
-## Self Heal
-
-Automatically corrects cluster drift.
-
-## Prune
-
-Automatically removes deleted resources.
-
----
-
-# Real-World Benefits
-
-This architecture enables:
-
-* Scalable environment management
-* Consistent deployments
-* Git as the source of truth
-* Reduced manual operations
-* Easier cluster management
-* Faster onboarding of new environments
+* Helm
+* values.yaml
+* ArgoCD Applications
+* ApplicationSets
+* List Generators
+* Git Directory Generators
+* Go Templates
+* Auto Sync
+* Self Heal
+* Prune
+* Automatic Application Discovery
 
 ---
 
@@ -513,20 +691,20 @@ This architecture enables:
 
 After completing this lab, you should understand:
 
-* Helm-based GitOps workflows
+* Helm-based GitOps
 * Multi-environment deployments
 * Environment-specific values files
 * ApplicationSet architecture
 * Git Directory Generators
 * Go Templates
 * Automatic Application generation
-* Scalable ArgoCD repository design
+* Scalable GitOps repository design
 
 ---
 
 # Next Steps
 
-After mastering this repository, continue with:
+After completing this repository:
 
 * App of Apps Pattern
 * ArgoCD Projects
@@ -535,10 +713,10 @@ After mastering this repository, continue with:
 * CI/CD + GitOps Integration
 * Cluster Bootstrap Repositories
 
-The next repository in the learning journey is:
+The next repository in this learning journey is:
 
 ```text
 cluster-bootstrap
 ```
 
-which introduces the App of Apps pattern and cluster bootstrapping using ArgoCD.
+which introduces the App of Apps pattern and full cluster bootstrapping using ArgoCD.
